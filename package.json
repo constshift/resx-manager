@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "resx-translation-manager.helloWorld",
-        "title": "Hello World"
+        "command": "resx-translation-manager.ResxManager",
+        "title": "RESX Translation Manager - Open Translation Scanner"
       }
     ]
   },
