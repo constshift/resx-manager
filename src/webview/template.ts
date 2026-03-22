@@ -2,56 +2,72 @@ import * as fs from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { getSavedScanFolderPath } from './settings';
 
+type AssetBinding = {
+	token: string;
+	relativePath: string;
+};
+
+type HtmlPartial = {
+	key: string;
+	relativePath: string;
+};
+
+const HTML_PARTIALS: HtmlPartial[] = [
+	{ key: 'htmlTemplate', relativePath: 'index.html' },
+	{ key: 'scannerHeaderHtml', relativePath: 'features/scanner/header-controls.html' },
+	{ key: 'scannerSidebarHtml', relativePath: 'features/scanner/sidebar.html' },
+	{ key: 'fileViewContentHtml', relativePath: 'features/file-view/content.html' },
+	{ key: 'translationButtonHtml', relativePath: 'features/translation/button.html' },
+	{ key: 'translationModalHtml', relativePath: 'features/translation/modal.html' }
+];
+
+const ASSET_BINDINGS: AssetBinding[] = [
+	{ token: 'stylesheetUri', relativePath: 'styles.css' },
+	{ token: 'scannerStylesheetUri', relativePath: 'features/scanner/styles.css' },
+	{ token: 'fileViewStylesheetUri', relativePath: 'features/file-view/styles.css' },
+	{ token: 'translationStylesheetUri', relativePath: 'features/translation/styles.css' },
+	{ token: 'scannerScriptUri', relativePath: 'features/scanner/feature.js' },
+	{ token: 'fileViewScriptUri', relativePath: 'features/file-view/feature.js' },
+	{ token: 'translationScriptUri', relativePath: 'features/translation/feature.js' },
+	{ token: 'scriptUri', relativePath: 'main.js' }
+];
+
+function webviewAssetUri(webview: vscode.Webview, webviewRoot: vscode.Uri, relativePath: string): string {
+	return webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, ...relativePath.split('/'))).toString();
+}
+
+async function loadHtmlPartials(webviewRoot: vscode.Uri): Promise<Record<string, string>> {
+	const entries = await Promise.all(
+		HTML_PARTIALS.map(async (partial) => {
+			const filePath = vscode.Uri.joinPath(webviewRoot, ...partial.relativePath.split('/')).fsPath;
+			const content = await fs.readFile(filePath, 'utf8');
+			return [partial.key, content] as const;
+		})
+	);
+
+	return Object.fromEntries(entries);
+}
+
 export async function getScannerWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
 	const webviewRoot = vscode.Uri.joinPath(extensionUri, 'media', 'webview');
-	const htmlTemplatePath = vscode.Uri.joinPath(webviewRoot, 'index.html');
-	const scannerHeaderTemplatePath = vscode.Uri.joinPath(webviewRoot, 'features', 'scanner', 'header-controls.html');
-	const scannerSidebarTemplatePath = vscode.Uri.joinPath(webviewRoot, 'features', 'scanner', 'sidebar.html');
-	const fileViewContentTemplatePath = vscode.Uri.joinPath(webviewRoot, 'features', 'file-view', 'content.html');
-	const translationButtonTemplatePath = vscode.Uri.joinPath(webviewRoot, 'features', 'translation', 'button.html');
-	const translationModalTemplatePath = vscode.Uri.joinPath(webviewRoot, 'features', 'translation', 'modal.html');
-	const stylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'styles.css')).toString();
-	const scannerStylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'scanner', 'styles.css')).toString();
-	const fileViewStylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'file-view', 'styles.css')).toString();
-	const translationStylesheetUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'translation', 'styles.css')).toString();
-	const scannerScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'scanner', 'feature.js')).toString();
-	const fileViewScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'file-view', 'feature.js')).toString();
-	const translationScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'features', 'translation', 'feature.js')).toString();
-	const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(webviewRoot, 'main.js')).toString();
+	const partials = await loadHtmlPartials(webviewRoot);
 	const savedFolderPath = escapeHtmlAttribute(getSavedScanFolderPath());
-	const [
-		htmlTemplate,
-		scannerHeaderHtml,
-		scannerSidebarHtml,
-		fileViewContentHtml,
-		translationButtonHtml,
-		translationModalHtml
-	] = await Promise.all([
-		fs.readFile(htmlTemplatePath.fsPath, 'utf8'),
-		fs.readFile(scannerHeaderTemplatePath.fsPath, 'utf8'),
-		fs.readFile(scannerSidebarTemplatePath.fsPath, 'utf8'),
-		fs.readFile(fileViewContentTemplatePath.fsPath, 'utf8'),
-		fs.readFile(translationButtonTemplatePath.fsPath, 'utf8'),
-		fs.readFile(translationModalTemplatePath.fsPath, 'utf8')
-	]);
+	const fileViewHtml = partials.fileViewContentHtml.replaceAll('{{translationButtonHtml}}', partials.translationButtonHtml);
 
-	const fileViewHtml = fileViewContentHtml.replaceAll('{{translationButtonHtml}}', translationButtonHtml);
-
-	return htmlTemplate
+	let html = partials.htmlTemplate
 		.replaceAll('{{cspSource}}', webview.cspSource)
-		.replaceAll('{{scannerHeaderHtml}}', scannerHeaderHtml)
-		.replaceAll('{{scannerSidebarHtml}}', scannerSidebarHtml)
+		.replaceAll('{{scannerHeaderHtml}}', partials.scannerHeaderHtml)
+		.replaceAll('{{scannerSidebarHtml}}', partials.scannerSidebarHtml)
 		.replaceAll('{{fileViewContentHtml}}', fileViewHtml)
-		.replaceAll('{{translationModalHtml}}', translationModalHtml)
-		.replaceAll('{{stylesheetUri}}', stylesheetUri)
-		.replaceAll('{{scannerStylesheetUri}}', scannerStylesheetUri)
-		.replaceAll('{{fileViewStylesheetUri}}', fileViewStylesheetUri)
-		.replaceAll('{{translationStylesheetUri}}', translationStylesheetUri)
-		.replaceAll('{{scannerScriptUri}}', scannerScriptUri)
-		.replaceAll('{{fileViewScriptUri}}', fileViewScriptUri)
-		.replaceAll('{{translationScriptUri}}', translationScriptUri)
-		.replaceAll('{{savedFolderPath}}', savedFolderPath)
-		.replaceAll('{{scriptUri}}', scriptUri);
+		.replaceAll('{{translationModalHtml}}', partials.translationModalHtml)
+		.replaceAll('{{savedFolderPath}}', savedFolderPath);
+
+	for (const binding of ASSET_BINDINGS) {
+		// Bind static asset tokens late so HTML partial loading remains independent from URI generation.
+		html = html.replaceAll(`{{${binding.token}}}`, webviewAssetUri(webview, webviewRoot, binding.relativePath));
+	}
+
+	return html;
 }
 
 function escapeHtmlAttribute(value: string): string {

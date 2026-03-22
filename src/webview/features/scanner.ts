@@ -6,11 +6,28 @@ import { FileLanguageGroup, ScanMessage, ScanResultMessage } from '../../types';
 import { getWorkspaceRoot, groupFilesByBaseName, isPathInsideWorkspace } from '../../utils';
 import { saveScanFolderPath } from '../settings';
 
+const EXCLUDE_GLOB = '**/node_modules/**';
+
+async function sendScanResult(panel: vscode.WebviewPanel, payload: Partial<ScanResultMessage>): Promise<void> {
+	// Always send a complete shape so webview rendering logic can stay simple.
+	await panel.webview.postMessage({
+		command: 'scanResult',
+		error: null,
+		groupedFiles: [],
+		totalFiles: 0,
+		...payload
+	} as ScanResultMessage);
+}
+
+function toRelativeWorkspacePath(workspaceRootPath: string, absoluteFilePath: string): string {
+	return path.relative(workspaceRootPath, absoluteFilePath).replace(/\\/g, '/');
+}
+
 export async function handleScanRequest(panel: vscode.WebviewPanel, message: ScanMessage): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot();
 
 	if (!workspaceRoot) {
-		await sendScanResult(panel, 'Open a workspace folder before scanning translation files.', []);
+		await sendScanResult(panel, { error: 'Open a workspace folder before scanning translation files.' });
 		return;
 	}
 
@@ -20,39 +37,30 @@ export async function handleScanRequest(panel: vscode.WebviewPanel, message: Sca
 	const folderAbsolutePath = path.resolve(workspaceRoot.fsPath, normalizedInput || '.');
 
 	if (!isPathInsideWorkspace(workspaceRoot.fsPath, folderAbsolutePath)) {
-		await sendScanResult(panel, 'Please enter a folder path inside the current workspace.', []);
+		await sendScanResult(panel, { error: 'Please enter a folder path inside the current workspace.' });
 		return;
 	}
 
 	try {
 		const folderStats = await fs.stat(folderAbsolutePath);
 		if (!folderStats.isDirectory()) {
-			await sendScanResult(panel, 'The provided path is not a folder.', []);
+			await sendScanResult(panel, { error: 'The provided path is not a folder.' });
 			return;
 		}
 
 		const files = await vscode.workspace.findFiles(
 			new vscode.RelativePattern(folderAbsolutePath, TRANSLATION_FILE_PATTERN),
-			'**/node_modules/**'
+			EXCLUDE_GLOB
 		);
 
 		const relativeFiles = files
-			.map((file) => path.relative(workspaceRoot.fsPath, file.fsPath).replace(/\\/g, '/'))
+			.map((file) => toRelativeWorkspacePath(workspaceRoot.fsPath, file.fsPath))
 			.sort((a, b) => a.localeCompare(b));
 
 		await sendScanResultWithFiles(panel, relativeFiles, normalizedInput);
 	} catch {
-		await sendScanResult(panel, 'Could not access that folder. Verify the path and try again.', []);
+		await sendScanResult(panel, { error: 'Could not access that folder. Verify the path and try again.' });
 	}
-}
-
-export async function sendScanResult(panel: vscode.WebviewPanel, error: string, _files: string[]): Promise<void> {
-	await panel.webview.postMessage({
-		command: 'scanResult',
-		error,
-		groupedFiles: [],
-		totalFiles: 0
-	} as ScanResultMessage);
 }
 
 export async function sendScanResultWithFiles(
@@ -62,13 +70,11 @@ export async function sendScanResultWithFiles(
 ): Promise<void> {
 	const groupedFiles: FileLanguageGroup[] = groupFilesByBaseName(files);
 
-	await panel.webview.postMessage({
-		command: 'scanResult',
-		error: null,
+	await sendScanResult(panel, {
 		groupedFiles,
 		totalFiles: files.length,
 		folder: folder || '.'
-	} as ScanResultMessage);
+	});
 }
 
 export async function handlePickFolderRequest(panel: vscode.WebviewPanel): Promise<void> {
@@ -86,7 +92,7 @@ export async function handlePickFolderRequest(panel: vscode.WebviewPanel): Promi
 	});
 
 	if (selectedFolders && selectedFolders.length > 0) {
-		const selectedPath = path.relative(workspaceRoot.fsPath, selectedFolders[0].fsPath).replace(/\\/g, '/');
+		const selectedPath = toRelativeWorkspacePath(workspaceRoot.fsPath, selectedFolders[0].fsPath);
 		await panel.webview.postMessage({
 			command: 'folderPath',
 			path: selectedPath

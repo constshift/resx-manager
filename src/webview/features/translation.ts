@@ -3,26 +3,18 @@ import * as vscode from 'vscode';
 import { BatchTranslateMessage, BatchTranslateResultMessage } from '../../types';
 import { getWorkspaceRoot, isPathInsideWorkspace, updateResxEntryField } from '../../utils';
 
+type TranslationService = 'azure-translator' | 'google-translate';
+
 export async function handleBatchTranslateRequest(panel: vscode.WebviewPanel, message: BatchTranslateMessage): Promise<void> {
 	try {
-		const service = message.translationConfig?.service || 'azure-translator';
+		const service = (message.translationConfig?.service || 'azure-translator') as TranslationService;
 		const azureKey = message.translationConfig?.azureKey || process.env.AZURE_TRANSLATE_KEY;
 		const azureRegion = message.translationConfig?.azureRegion || process.env.AZURE_TRANSLATE_REGION;
 		const googleApiKey = message.translationConfig?.googleApiKey || process.env.GOOGLE_TRANSLATE_API_KEY;
 
-		if (service === 'azure-translator' && (!azureKey || !azureRegion)) {
-			await panel.webview.postMessage({
-				command: 'batchTranslateResult',
-				error: 'Azure Translate API credentials not configured. Please enter your API key and region.'
-			} as BatchTranslateResultMessage);
-			return;
-		}
-
-		if (service === 'google-translate' && !googleApiKey) {
-			await panel.webview.postMessage({
-				command: 'batchTranslateResult',
-				error: 'Google Translate API key not configured. Please enter your API key.'
-			} as BatchTranslateResultMessage);
+		const credentialsError = getCredentialsError({ service, azureKey, azureRegion, googleApiKey });
+		if (credentialsError) {
+			await sendBatchTranslateResult(panel, { error: credentialsError });
 			return;
 		}
 
@@ -31,6 +23,7 @@ export async function handleBatchTranslateRequest(panel: vscode.WebviewPanel, me
 			throw new Error('No workspace open');
 		}
 
+		// Keep translated rows aligned with source keys by preserving array order.
 		for (const [language, translationData] of Object.entries(message.translationsPerLanguage)) {
 			if (!translationData.filePath) {
 				continue;
@@ -41,8 +34,7 @@ export async function handleBatchTranslateRequest(panel: vscode.WebviewPanel, me
 				throw new Error(`Translation file path is outside workspace: ${translationData.filePath}`);
 			}
 
-			// Extract language code (e.g., "de-DE" -> "de", or "es" -> "es")
-			const languageCode = language.split('-')[0].toLowerCase();
+			const languageCode = getPrimaryLanguageCode(language);
 
 			const translatedValues = await translateTexts({
 				texts: translationData.defaultValues,
@@ -62,26 +54,54 @@ export async function handleBatchTranslateRequest(panel: vscode.WebviewPanel, me
 			}
 		}
 
-		await panel.webview.postMessage({
-			command: 'batchTranslateResult'
-		} as BatchTranslateResultMessage);
+		await sendBatchTranslateResult(panel, {});
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown batch translation error';
-		await panel.webview.postMessage({
-			command: 'batchTranslateResult',
-			error: errorMessage
-		} as BatchTranslateResultMessage);
+		await sendBatchTranslateResult(panel, { error: errorMessage });
 	}
 }
 
 type TranslationOptions = {
 	texts: string[];
 	targetLanguage: string;
-	service: string;
+	service: TranslationService;
 	azureKey?: string;
 	azureRegion?: string;
 	googleApiKey?: string;
 };
+
+type TranslationCredentials = {
+	service: TranslationService;
+	azureKey?: string;
+	azureRegion?: string;
+	googleApiKey?: string;
+};
+
+async function sendBatchTranslateResult(
+	panel: vscode.WebviewPanel,
+	payload: { error?: string }
+): Promise<void> {
+	await panel.webview.postMessage({
+		command: 'batchTranslateResult',
+		...payload
+	} as BatchTranslateResultMessage);
+}
+
+function getCredentialsError(credentials: TranslationCredentials): string | null {
+	if (credentials.service === 'azure-translator' && (!credentials.azureKey || !credentials.azureRegion)) {
+		return 'Azure Translate API credentials not configured. Please enter your API key and region.';
+	}
+
+	if (credentials.service === 'google-translate' && !credentials.googleApiKey) {
+		return 'Google Translate API key not configured. Please enter your API key.';
+	}
+
+	return null;
+}
+
+function getPrimaryLanguageCode(language: string): string {
+	return language.split('-')[0].toLowerCase();
+}
 
 async function translateTexts(options: TranslationOptions): Promise<string[]> {
 	if (options.service === 'google-translate') {
@@ -99,7 +119,11 @@ async function translateTexts(options: TranslationOptions): Promise<string[]> {
 	return translateTextsWithAzure(options.texts, options.targetLanguage, options.azureKey, options.azureRegion);
 }
 
-async function translateTextsWithAzure(texts: string[], targetLanguage: string, apiKey: string, region: string): Promise<string[]> {
+async function translateEachText(
+	texts: string[],
+	translateOne: (text: string) => Promise<string>
+): Promise<string[]> {
+	// Sequential translation preserves key/value order across all providers.
 	const results: string[] = [];
 
 	for (const text of texts) {
@@ -108,6 +132,14 @@ async function translateTextsWithAzure(texts: string[], targetLanguage: string, 
 			continue;
 		}
 
+		results.push(await translateOne(text));
+	}
+
+	return results;
+}
+
+async function translateTextsWithAzure(texts: string[], targetLanguage: string, apiKey: string, region: string): Promise<string[]> {
+	return translateEachText(texts, async (text) => {
 		try {
 			const response = await fetch(`https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${targetLanguage}`, {
 				method: 'POST',
@@ -125,28 +157,20 @@ async function translateTextsWithAzure(texts: string[], targetLanguage: string, 
 			}
 
 			const result = await response.json() as Array<{ translations: Array<{ text: string }> }>;
-			if (result[0]?.translations[0]?.text) {
-				results.push(result[0].translations[0].text);
-			} else {
+			const translatedText = result[0]?.translations[0]?.text;
+			if (!translatedText) {
 				throw new Error(`Unexpected Azure response format: ${JSON.stringify(result)}`);
 			}
+
+			return translatedText;
 		} catch (error) {
 			throw new Error(`Translation failed for text "${text}": ${error instanceof Error ? error.message : String(error)}`);
 		}
-	}
-
-	return results;
+	});
 }
 
 async function translateTextsWithGoogle(texts: string[], targetLanguage: string, apiKey: string): Promise<string[]> {
-	const results: string[] = [];
-
-	for (const text of texts) {
-		if (!text) {
-			results.push('');
-			continue;
-		}
-
+	return translateEachText(texts, async (text) => {
 		try {
 			const response = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(apiKey)}`, {
 				method: 'POST',
@@ -172,17 +196,15 @@ async function translateTextsWithGoogle(texts: string[], targetLanguage: string,
 			};
 
 			const translatedText = result.data?.translations?.[0]?.translatedText;
-			if (translatedText) {
-				results.push(decodeHtmlEntities(translatedText));
-			} else {
+			if (!translatedText) {
 				throw new Error(`Unexpected Google response format: ${JSON.stringify(result)}`);
 			}
+
+			return decodeHtmlEntities(translatedText);
 		} catch (error) {
 			throw new Error(`Translation failed for text "${text}": ${error instanceof Error ? error.message : String(error)}`);
 		}
-	}
-
-	return results;
+	});
 }
 
 function decodeHtmlEntities(value: string): string {

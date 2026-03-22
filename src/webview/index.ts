@@ -24,6 +24,14 @@ import { handleBatchTranslateRequest } from './features/translation';
 import { getScannerWebviewHtml } from './template';
 
 let translationScannerPanel: vscode.WebviewPanel | undefined;
+type WebviewInboundMessage =
+	| ScanMessage
+	| OpenFileGroupMessage
+	| SaveCellMessage
+	| AddKeyMessage
+	| DeleteKeyMessage
+	| PickFolderMessage
+	| BatchTranslateMessage;
 
 /**
  * Creates and opens the translation scanner webview panel.
@@ -69,30 +77,31 @@ export async function openTranslationScannerPanel(context: vscode.ExtensionConte
  */
 function setupWebviewMessageListener(panel: vscode.WebviewPanel): void {
 	panel.webview.onDidReceiveMessage(
-		async (
-			message:
-				| ScanMessage
-				| OpenFileGroupMessage
-				| SaveCellMessage
-				| AddKeyMessage
-				| DeleteKeyMessage
-				| PickFolderMessage
-				| BatchTranslateMessage
-		) => {
-			if (message.command === 'scan') {
-				await handleScanRequest(panel, message as ScanMessage);
-			} else if (message.command === 'openFileGroup') {
-				await handleOpenFileGroupRequest(panel, message as OpenFileGroupMessage);
-			} else if (message.command === 'saveCell') {
-				await handleSaveCellRequest(panel, message as SaveCellMessage);
-			} else if (message.command === 'addKey') {
-				await handleAddKeyRequest(panel, message as AddKeyMessage);
-			} else if (message.command === 'deleteKey') {
-				await handleDeleteKeyRequest(panel, message as DeleteKeyMessage);
-			} else if (message.command === 'pickFolder') {
-				await handlePickFolderRequest(panel);
-			} else if (message.command === 'batchTranslate') {
-				await handleBatchTranslateRequest(panel, message as BatchTranslateMessage);
+		async (message: WebviewInboundMessage) => {
+			switch (message.command) {
+				case 'scan':
+					await handleScanRequest(panel, message);
+					return;
+				case 'openFileGroup':
+					await handleOpenFileGroupRequest(panel, message);
+					return;
+				case 'saveCell':
+					await handleSaveCellRequest(panel, message);
+					return;
+				case 'addKey':
+					await handleAddKeyRequest(panel, message);
+					return;
+				case 'deleteKey':
+					await handleDeleteKeyRequest(panel, message);
+					return;
+				case 'pickFolder':
+					await handlePickFolderRequest(panel);
+					return;
+				case 'batchTranslate':
+					await handleBatchTranslateRequest(panel, message);
+					return;
+				default:
+					return;
 			}
 		}
 	);

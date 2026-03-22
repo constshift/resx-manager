@@ -22,18 +22,106 @@ import {
 	updateResxEntryField
 } from '../../utils';
 
+const EXCLUDE_GLOB = '**/node_modules/**';
+
+type WorkspaceContext = {
+	rootUri: vscode.Uri;
+	rootPath: string;
+};
+
+function getWorkspaceContext(): WorkspaceContext | null {
+	const rootUri = getWorkspaceRoot();
+	if (!rootUri) {
+		return null;
+	}
+
+	return {
+		rootUri,
+		rootPath: rootUri.fsPath
+	};
+}
+
+function getWorkspaceFilePath(workspaceRootPath: string, relativeFilePath: string): string | null {
+	// Resolve against workspace root and hard-stop any path traversal attempts.
+	const absolutePath = path.resolve(workspaceRootPath, relativeFilePath);
+	if (!isPathInsideWorkspace(workspaceRootPath, absolutePath)) {
+		return null;
+	}
+
+	return absolutePath;
+}
+
+function getWorkspaceFilePaths(workspaceRootPath: string, relativeFilePaths: string[]): string[] {
+	return relativeFilePaths
+		.map((relativeFilePath) => getWorkspaceFilePath(workspaceRootPath, relativeFilePath))
+		.filter((absolutePath): absolutePath is string => !!absolutePath);
+}
+
+async function sendFileContentError(panel: vscode.WebviewPanel, error: string): Promise<void> {
+	await panel.webview.postMessage({
+		command: 'fileContent',
+		error
+	} as FileContentMessage);
+}
+
+async function sendSaveCellResult(panel: vscode.WebviewPanel, payload: { error?: string; keyName?: string }): Promise<void> {
+	await panel.webview.postMessage({
+		command: 'saveCellResult',
+		...payload
+	} as SaveCellResultMessage);
+}
+
+async function sendKeyMutationResult(
+	panel: vscode.WebviewPanel,
+	action: 'add' | 'delete',
+	payload: { error?: string; keyName?: string }
+): Promise<void> {
+	await panel.webview.postMessage({
+		command: 'keyMutationResult',
+		action,
+		...payload
+	} as KeyMutationResultMessage);
+}
+
+async function findDuplicateKeyName(
+	absFilePaths: string[],
+	targetKeyName: string,
+	ignoredKeyName?: string
+): Promise<boolean> {
+	// Duplicate checks are case-insensitive to match user expectations in the UI.
+	const targetKeyLower = targetKeyName.toLocaleLowerCase();
+	const ignoredKeyLower = ignoredKeyName?.toLocaleLowerCase();
+
+	for (const filePath of absFilePaths) {
+		const entries = await parseResxFile(filePath);
+		const duplicateExists = Array.from(entries.keys()).some((existingKey) => {
+			const existingLower = existingKey.toLocaleLowerCase();
+			if (ignoredKeyLower && existingLower === ignoredKeyLower) {
+				return false;
+			}
+			return existingLower === targetKeyLower;
+		});
+
+		if (duplicateExists) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 export async function handleOpenFileGroupRequest(panel: vscode.WebviewPanel, message: OpenFileGroupMessage): Promise<void> {
 	try {
-		const workspaceRoot = getWorkspaceRoot();
-		if (!workspaceRoot) {
+		const workspace = getWorkspaceContext();
+		if (!workspace) {
 			await sendFileContentError(panel, 'No workspace open.');
 			return;
 		}
 
-		const translationPattern = new vscode.RelativePattern(workspaceRoot, TRANSLATION_FILE_PATTERN);
-		const translationFiles = await vscode.workspace.findFiles(translationPattern, '**/node_modules/**');
+		const translationPattern = new vscode.RelativePattern(workspace.rootUri, TRANSLATION_FILE_PATTERN);
+		const translationFiles = await vscode.workspace.findFiles(translationPattern, EXCLUDE_GLOB);
 		const matchedFiles = translationFiles.filter((file) => {
-			const relativePath = path.relative(workspaceRoot.fsPath, file.fsPath).replace(/\\/g, '/');
+			const relativePath = path.relative(workspace.rootPath, file.fsPath).replace(/\\/g, '/');
 			const parsed = parseFileName(relativePath);
 			const relativeFolderPath = path.posix.dirname(relativePath);
 			const normalizedFolderPath = relativeFolderPath === '.' ? '' : relativeFolderPath;
@@ -46,10 +134,10 @@ export async function handleOpenFileGroupRequest(panel: vscode.WebviewPanel, mes
 		}
 
 		const relativeFiles = matchedFiles.map((file) =>
-			path.relative(workspaceRoot.fsPath, file.fsPath).replace(/\\/g, '/')
+			path.relative(workspace.rootPath, file.fsPath).replace(/\\/g, '/')
 		);
 
-		const { languages, keys } = await parseFileGroup(workspaceRoot.fsPath, relativeFiles);
+		const { languages, keys } = await parseFileGroup(workspace.rootPath, relativeFiles);
 		const defaultFilePath = relativeFiles.find((file) => parseFileName(file).languageCode === null);
 		const languageFilePaths: Record<string, string> = {};
 		for (const file of relativeFiles) {
@@ -76,12 +164,9 @@ export async function handleOpenFileGroupRequest(panel: vscode.WebviewPanel, mes
 }
 
 export async function handleSaveCellRequest(panel: vscode.WebviewPanel, message: SaveCellMessage): Promise<void> {
-	const workspaceRoot = getWorkspaceRoot();
-	if (!workspaceRoot) {
-		await panel.webview.postMessage({
-			command: 'saveCellResult',
-			error: 'No workspace open.'
-		} as SaveCellResultMessage);
+	const workspace = getWorkspaceContext();
+	if (!workspace) {
+		await sendSaveCellResult(panel, { error: 'No workspace open.' });
 		return;
 	}
 
@@ -98,34 +183,15 @@ export async function handleSaveCellRequest(panel: vscode.WebviewPanel, message:
 			}
 
 			if (oldKeyName !== newKeyName) {
-				const newKeyNameLower = newKeyName.toLocaleLowerCase();
-				const oldKeyNameLower = oldKeyName.toLocaleLowerCase();
-				for (const relativeFilePath of message.allFilePaths) {
-					const filePath = path.resolve(workspaceRoot.fsPath, relativeFilePath);
-					if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
-						continue;
-					}
-
-					const entries = await parseResxFile(filePath);
-					const duplicateExists = Array.from(entries.keys()).some((existingKey) => {
-						const existingLower = existingKey.toLocaleLowerCase();
-						if (existingLower === oldKeyNameLower) {
-							return false;
-						}
-						return existingLower === newKeyNameLower;
-					});
-
-					if (duplicateExists) {
-						throw new Error(`Key "${newKeyName}" already exists.`);
-					}
+				const filePaths = getWorkspaceFilePaths(workspace.rootPath, message.allFilePaths);
+				const duplicateExists = await findDuplicateKeyName(filePaths, newKeyName, oldKeyName);
+				if (duplicateExists) {
+					throw new Error(`Key "${newKeyName}" already exists.`);
 				}
 			}
 
-			for (const relativeFilePath of message.allFilePaths) {
-				const filePath = path.resolve(workspaceRoot.fsPath, relativeFilePath);
-				if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
-					continue;
-				}
+			const filePaths = getWorkspaceFilePaths(workspace.rootPath, message.allFilePaths);
+			for (const filePath of filePaths) {
 				await renameResxEntryName(filePath, oldKeyName, newKeyName);
 			}
 		} else {
@@ -133,8 +199,8 @@ export async function handleSaveCellRequest(panel: vscode.WebviewPanel, message:
 				throw new Error('No source file provided for save.');
 			}
 
-			const filePath = path.resolve(workspaceRoot.fsPath, message.filePath);
-			if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
+			const filePath = getWorkspaceFilePath(workspace.rootPath, message.filePath);
+			if (!filePath) {
 				throw new Error('Target file is outside workspace.');
 			}
 
@@ -142,28 +208,20 @@ export async function handleSaveCellRequest(panel: vscode.WebviewPanel, message:
 			await updateResxEntryField(filePath, message.keyName, targetField, message.value);
 		}
 
-		await panel.webview.postMessage({
-			command: 'saveCellResult',
-			keyName: message.value.trim()
-		} as SaveCellResultMessage);
+		await sendSaveCellResult(panel, { keyName: message.value.trim() });
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown save error';
-		await panel.webview.postMessage({
-			command: 'saveCellResult',
+		await sendSaveCellResult(panel, {
 			error: errorMessage,
 			keyName: message.keyName
-		} as SaveCellResultMessage);
+		});
 	}
 }
 
 export async function handleAddKeyRequest(panel: vscode.WebviewPanel, message: AddKeyMessage): Promise<void> {
-	const workspaceRoot = getWorkspaceRoot();
-	if (!workspaceRoot) {
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'add',
-			error: 'No workspace open.'
-		} as KeyMutationResultMessage);
+	const workspace = getWorkspaceContext();
+	if (!workspace) {
+		await sendKeyMutationResult(panel, 'add', { error: 'No workspace open.' });
 		return;
 	}
 
@@ -178,52 +236,35 @@ export async function handleAddKeyRequest(panel: vscode.WebviewPanel, message: A
 			throw new Error('No source files available for adding key.');
 		}
 
-		for (const relativeFilePath of message.allFilePaths) {
-			const filePath = path.resolve(workspaceRoot.fsPath, relativeFilePath);
-			if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
-				continue;
-			}
-
-			const entries = await parseResxFile(filePath);
-			const duplicateExists = Array.from(entries.keys()).some((existingKey) => existingKey.toLocaleLowerCase() === keyNameLower);
-			if (duplicateExists) {
-				throw new Error(`Key "${keyName}" already exists.`);
-			}
+		const filePaths = getWorkspaceFilePaths(workspace.rootPath, message.allFilePaths);
+		const duplicateExists = await findDuplicateKeyName(filePaths, keyName);
+		if (duplicateExists) {
+			throw new Error(`Key "${keyName}" already exists.`);
 		}
 
 		for (const relativeFilePath of message.allFilePaths) {
-			const filePath = path.resolve(workspaceRoot.fsPath, relativeFilePath);
-			if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
+			const filePath = getWorkspaceFilePath(workspace.rootPath, relativeFilePath);
+			if (!filePath) {
 				continue;
 			}
 			const isDefaultFile = parseFileName(relativeFilePath).languageCode === null;
 			await addResxEntry(filePath, keyName, isDefaultFile ? keyName : '');
 		}
 
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'add',
-			keyName
-		} as KeyMutationResultMessage);
+		await sendKeyMutationResult(panel, 'add', { keyName });
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown add key error';
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'add',
+		await sendKeyMutationResult(panel, 'add', {
 			error: errorMessage,
 			keyName: message.keyName
-		} as KeyMutationResultMessage);
+		});
 	}
 }
 
 export async function handleDeleteKeyRequest(panel: vscode.WebviewPanel, message: DeleteKeyMessage): Promise<void> {
-	const workspaceRoot = getWorkspaceRoot();
-	if (!workspaceRoot) {
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'delete',
-			error: 'No workspace open.'
-		} as KeyMutationResultMessage);
+	const workspace = getWorkspaceContext();
+	if (!workspace) {
+		await sendKeyMutationResult(panel, 'delete', { error: 'No workspace open.' });
 		return;
 	}
 
@@ -236,33 +277,18 @@ export async function handleDeleteKeyRequest(panel: vscode.WebviewPanel, message
 			throw new Error('No source files available for deleting key.');
 		}
 
-		for (const relativeFilePath of message.allFilePaths) {
-			const filePath = path.resolve(workspaceRoot.fsPath, relativeFilePath);
-			if (!isPathInsideWorkspace(workspaceRoot.fsPath, filePath)) {
-				continue;
-			}
+		const keyName = message.keyName.trim();
+		const filePaths = getWorkspaceFilePaths(workspace.rootPath, message.allFilePaths);
+		for (const filePath of filePaths) {
 			await deleteResxEntry(filePath, message.keyName.trim());
 		}
 
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'delete',
-			keyName: message.keyName.trim()
-		} as KeyMutationResultMessage);
+		await sendKeyMutationResult(panel, 'delete', { keyName });
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown delete key error';
-		await panel.webview.postMessage({
-			command: 'keyMutationResult',
-			action: 'delete',
+		await sendKeyMutationResult(panel, 'delete', {
 			error: errorMessage,
 			keyName: message.keyName
-		} as KeyMutationResultMessage);
+		});
 	}
-}
-
-async function sendFileContentError(panel: vscode.WebviewPanel, error: string): Promise<void> {
-	await panel.webview.postMessage({
-		command: 'fileContent',
-		error
-	} as FileContentMessage);
 }

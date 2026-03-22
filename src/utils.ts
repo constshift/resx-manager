@@ -12,6 +12,55 @@ type ResxEntry = {
 	comment: string;
 };
 
+type ResxDataBlock = {
+	originalBlock: string;
+	attributes: string;
+	dataContent: string;
+	name: string;
+};
+
+const DATA_BLOCK_REGEX = /<data\b([^>]*)>([\s\S]*?)<\/data>/g;
+const DATA_BLOCK_WITH_TRAILING_SPACE_REGEX = /<data\b([^>]*)>([\s\S]*?)<\/data>\s*/g;
+const ROOT_CLOSE_REGEX = /\s*<\/root>\s*$/i;
+const RESX_TAG_INDENT_REGEX = /\n([ \t]*)<(?:value|comment)\b/i;
+
+function toWorkspaceFileUri(filePath: string): vscode.Uri {
+	return vscode.Uri.file(filePath);
+}
+
+async function readWorkspaceFileText(filePath: string): Promise<string> {
+	const content = await vscode.workspace.fs.readFile(toWorkspaceFileUri(filePath));
+	return new TextDecoder().decode(content);
+}
+
+async function writeWorkspaceFileText(filePath: string, text: string): Promise<void> {
+	await vscode.workspace.fs.writeFile(toWorkspaceFileUri(filePath), new TextEncoder().encode(text));
+}
+
+function extractResxDataBlocks(xmlText: string): ResxDataBlock[] {
+	const blocks: ResxDataBlock[] = [];
+	let match: RegExpExecArray | null;
+
+	while ((match = DATA_BLOCK_REGEX.exec(xmlText)) !== null) {
+		const attributes = match[1];
+		const dataContent = match[2];
+		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
+		if (!nameMatch) {
+			continue;
+		}
+
+		blocks.push({
+			originalBlock: match[0],
+			attributes,
+			dataContent,
+			name: decodeXmlEntities(nameMatch[1])
+		});
+	}
+
+	DATA_BLOCK_REGEX.lastIndex = 0;
+	return blocks;
+}
+
 function decodeXmlEntities(input: string): string {
 	return input
 		.replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)))
@@ -53,7 +102,7 @@ function upsertResxChildTag(content: string, tagName: 'value' | 'comment', rawVa
 		return content.replace(selfClosingRegex, `<${tagName}>${escapedValue}</${tagName}>`);
 	}
 
-	const indentMatch = content.match(/\n([ \t]*)<(?:value|comment)\b/i);
+	const indentMatch = content.match(RESX_TAG_INDENT_REGEX);
 	const indent = indentMatch?.[1] ?? '    ';
 	if (content.includes('\n')) {
 		return content.replace(/(\s*)$/, `\n${indent}<${tagName}>${escapedValue}</${tagName}>$1`);
@@ -67,11 +116,10 @@ function updateDataBlockByName(
 	targetName: string,
 	transformer: (attributes: string, dataContent: string) => { attributes: string; dataContent: string }
 ): string {
-	const dataRegex = /<data\b([^>]*)>([\s\S]*?)<\/data>/g;
 	let match: RegExpExecArray | null;
 	let updatedText = xmlText;
 
-	while ((match = dataRegex.exec(xmlText)) !== null) {
+	while ((match = DATA_BLOCK_REGEX.exec(xmlText)) !== null) {
 		const attributes = match[1];
 		const dataContent = match[2];
 		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
@@ -90,6 +138,8 @@ function updateDataBlockByName(
 		updatedText = updatedText.replace(originalBlock, newBlock);
 		break;
 	}
+
+	DATA_BLOCK_REGEX.lastIndex = 0;
 
 	return updatedText;
 }
@@ -182,26 +232,12 @@ export function groupFilesByBaseName(filePaths: string[]): FileLanguageGroup[] {
  * Parses a .resx file and extracts data entries with name, value, and comment.
  */
 export async function parseResxFile(filePath: string): Promise<Map<string, ResxEntry>> {
-	const fileUri = vscode.Uri.file(filePath);
-	const content = await vscode.workspace.fs.readFile(fileUri);
-	const text = stripXmlComments(new TextDecoder().decode(content));
+	const text = stripXmlComments(await readWorkspaceFileText(filePath));
 
 	const entries = new Map<string, ResxEntry>();
 
-	// Match each <data ...>...</data> block, then extract name/value/comment from the block.
-	const dataRegex = /<data\b([^>]*)>([\s\S]*?)<\/data>/g;
-	let match;
-
-	while ((match = dataRegex.exec(text)) !== null) {
-		const attributes = match[1];
-		const dataContent = match[2];
-
-		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
-		if (!nameMatch) {
-			continue;
-		}
-
-		const name = decodeXmlEntities(nameMatch[1]);
+	for (const dataBlock of extractResxDataBlocks(text)) {
+		const { dataContent, name } = dataBlock;
 
 		const valueMatch = dataContent.match(/<value(?:\s[^>]*)?>([\s\S]*?)<\/value>/i);
 		const commentMatch = dataContent.match(/<comment(?:\s[^>]*)?>([\s\S]*?)<\/comment>/i);
@@ -238,9 +274,7 @@ export async function updateResxEntryField(
 	field: 'value' | 'comment',
 	newValue: string
 ): Promise<void> {
-	const fileUri = vscode.Uri.file(filePath);
-	const content = await vscode.workspace.fs.readFile(fileUri);
-	const text = new TextDecoder().decode(content);
+	const text = await readWorkspaceFileText(filePath);
 
 	const updatedText = updateDataBlockByName(text, keyName, (attributes, dataContent) => ({
 		attributes,
@@ -251,13 +285,11 @@ export async function updateResxEntryField(
 		throw new Error(`Could not find RESX entry with name "${keyName}" in ${filePath}`);
 	}
 
-	await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(updatedText));
+	await writeWorkspaceFileText(filePath, updatedText);
 }
 
 export async function renameResxEntryName(filePath: string, oldKeyName: string, newKeyName: string): Promise<boolean> {
-	const fileUri = vscode.Uri.file(filePath);
-	const content = await vscode.workspace.fs.readFile(fileUri);
-	const text = new TextDecoder().decode(content);
+	const text = await readWorkspaceFileText(filePath);
 
 	const updatedText = updateDataBlockByName(text, oldKeyName, (attributes, dataContent) => {
 		const escapedName = encodeXmlEntities(newKeyName);
@@ -272,7 +304,7 @@ export async function renameResxEntryName(filePath: string, oldKeyName: string, 
 		return false;
 	}
 
-	await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(updatedText));
+	await writeWorkspaceFileText(filePath, updatedText);
 	return true;
 }
 
@@ -282,9 +314,7 @@ export async function addResxEntry(filePath: string, keyName: string, initialVal
 		return false;
 	}
 
-	const fileUri = vscode.Uri.file(filePath);
-	const content = await vscode.workspace.fs.readFile(fileUri);
-	const text = new TextDecoder().decode(content);
+	const text = await readWorkspaceFileText(filePath);
 
 	const escapedName = encodeXmlEntities(keyName);
 	const escapedInitialValue = encodeXmlEntities(initialValue);
@@ -295,26 +325,23 @@ export async function addResxEntry(filePath: string, keyName: string, initialVal
 		'  </data>'
 	].join('\n');
 
-	if (!/<\/root>\s*$/i.test(text)) {
+	if (!ROOT_CLOSE_REGEX.test(text)) {
 		throw new Error(`Could not find </root> in ${filePath}`);
 	}
 
-	const updatedText = text.replace(/\s*<\/root>\s*$/i, `\n${newEntry}\n</root>\n`);
-	await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(updatedText));
+	const updatedText = text.replace(ROOT_CLOSE_REGEX, `\n${newEntry}\n</root>\n`);
+	await writeWorkspaceFileText(filePath, updatedText);
 	return true;
 }
 
 export async function deleteResxEntry(filePath: string, keyName: string): Promise<boolean> {
-	const fileUri = vscode.Uri.file(filePath);
-	const content = await vscode.workspace.fs.readFile(fileUri);
-	const text = new TextDecoder().decode(content);
+	const text = await readWorkspaceFileText(filePath);
 
-	const dataRegex = /<data\b([^>]*)>([\s\S]*?)<\/data>\s*/g;
 	let match: RegExpExecArray | null;
 	let updatedText = text;
 	let deleted = false;
 
-	while ((match = dataRegex.exec(text)) !== null) {
+	while ((match = DATA_BLOCK_WITH_TRAILING_SPACE_REGEX.exec(text)) !== null) {
 		const attributes = match[1];
 		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
 		if (!nameMatch) {
@@ -331,12 +358,14 @@ export async function deleteResxEntry(filePath: string, keyName: string): Promis
 		break;
 	}
 
+	DATA_BLOCK_WITH_TRAILING_SPACE_REGEX.lastIndex = 0;
+
 	if (!deleted) {
 		return false;
 	}
 
 	updatedText = updatedText.replace(/\n{3,}/g, '\n\n');
-	await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(updatedText));
+	await writeWorkspaceFileText(filePath, updatedText);
 	return true;
 }
 
@@ -348,6 +377,7 @@ export async function parseFileGroup(
 	workspaceRootPath: string,
 	files: string[]
 ): Promise<{ languages: string[]; keys: TranslationKeyRow[] }> {
+	// Keep these maps separate so we can merge sparse language files predictably.
 	const baseValues = new Map<string, string>();
 	const comments = new Map<string, string>();
 	const languageValueMaps = new Map<string, Map<string, string>>();
