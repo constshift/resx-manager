@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{cspSource}} https: data:; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}};" />
+	<title>Translation Scanner</title>
+	<link rel="stylesheet" href="{{stylesheetUri}}" />
+</head>
+<body>
+	<div class="header">
+		<div class="scan-input-group">
+			<label for="folderPath">Folder:</label>
+			<input id="folderPath" type="text" placeholder="e.g. src/translations" value="{{savedFolderPath}}" />
+			<button id="folderPickerButton" type="button" title="Browse for folder">📁</button>
+			<button id="scanButton" type="button">Scan</button>
+		</div>
+		<div id="status" class="status"></div>
+	</div>
+
+	<div class="content">
+		<div class="sidebar" id="sidebar">
+			<div class="sidebar-search-container">
+				<input id="searchInput" type="text" class="sidebar-search" placeholder="Search files..." />
+				<button id="clearSearchButton" class="clear-search-button" title="Clear search" aria-label="Clear search">×</button>
+			</div>
+			<div id="fileList"></div>
+		</div>
+		<div class="main">
+			<div class="editor-title" id="editorTitle">Select a translation file to view</div>
+			<div class="key-controls">
+				<input id="newKeyInput" type="text" placeholder="New key name" />
+				<button id="addKeyButton" type="button">Add Key</button>
+			</div>
+			<div id="tableContainer" class="table-container">
+				<div class="no-file-selected">No file selected</div>
+			</div>
+		</div>
+	</div>
+
+	<div id="loadingOverlay" class="loading-overlay"></div>
+
+	<script src="{{scriptUri}}"></script>
+</body>
+</html>

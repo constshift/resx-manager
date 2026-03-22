@@ -17,7 +17,17 @@
         "command": "resx-translation-manager.ResxManager",
         "title": "RESX Translation Manager - Open Translation Scanner"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "RESX Translation Manager",
+      "properties": {
+        "resx-translation-manager.scanFolderPath": {
+          "type": "string",
+          "default": "",
+          "description": "Default relative folder path used by the translation scanner."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

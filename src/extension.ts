@@ -6,7 +6,7 @@ import { openTranslationScannerPanel } from './webview';
  * Extension activation - called when the command is first executed
  */
 export function activate(context: vscode.ExtensionContext) {
-	const disposable = vscode.commands.registerCommand(COMMAND_OPEN_SCANNER, openTranslationScannerPanel);
+	const disposable = vscode.commands.registerCommand(COMMAND_OPEN_SCANNER, () => openTranslationScannerPanel(context));
 	context.subscriptions.push(disposable);
 }
 
