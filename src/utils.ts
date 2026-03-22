@@ -19,6 +19,11 @@ type ResxDataBlock = {
 	name: string;
 };
 
+type ResxDataBlockMatch = ResxDataBlock & {
+	startIndex: number;
+	endIndex: number;
+};
+
 const DATA_BLOCK_REGEX = /<data\b([^>]*)>([\s\S]*?)<\/data>/g;
 const DATA_BLOCK_WITH_TRAILING_SPACE_REGEX = /<data\b([^>]*)>([\s\S]*?)<\/data>\s*/g;
 const ROOT_CLOSE_REGEX = /\s*<\/root>\s*$/i;
@@ -38,27 +43,40 @@ async function writeWorkspaceFileText(filePath: string, text: string): Promise<v
 }
 
 function extractResxDataBlocks(xmlText: string): ResxDataBlock[] {
-	const blocks: ResxDataBlock[] = [];
-	let match: RegExpExecArray | null;
+	return getResxDataBlockMatches(xmlText).map((block) => ({
+		originalBlock: block.originalBlock,
+		attributes: block.attributes,
+		dataContent: block.dataContent,
+		name: block.name
+	}));
+}
 
-	while ((match = DATA_BLOCK_REGEX.exec(xmlText)) !== null) {
-		const attributes = match[1];
-		const dataContent = match[2];
+function getResxDataBlockMatches(xmlText: string, includeTrailingWhitespace = false): ResxDataBlockMatch[] {
+	const regex = includeTrailingWhitespace ? DATA_BLOCK_WITH_TRAILING_SPACE_REGEX : DATA_BLOCK_REGEX;
+	const matcher = new RegExp(regex.source, 'g');
+	const matches: ResxDataBlockMatch[] = [];
+
+	for (const match of xmlText.matchAll(matcher)) {
+		const attributes = match[1] ?? '';
+		const dataContent = match[2] ?? '';
 		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
 		if (!nameMatch) {
 			continue;
 		}
 
-		blocks.push({
-			originalBlock: match[0],
+		const startIndex = match.index ?? 0;
+		const originalBlock = match[0];
+		matches.push({
+			originalBlock,
 			attributes,
 			dataContent,
-			name: decodeXmlEntities(nameMatch[1])
+			name: decodeXmlEntities(nameMatch[1]),
+			startIndex,
+			endIndex: startIndex + originalBlock.length
 		});
 	}
 
-	DATA_BLOCK_REGEX.lastIndex = 0;
-	return blocks;
+	return matches;
 }
 
 function decodeXmlEntities(input: string): string {
@@ -116,32 +134,15 @@ function updateDataBlockByName(
 	targetName: string,
 	transformer: (attributes: string, dataContent: string) => { attributes: string; dataContent: string }
 ): string {
-	let match: RegExpExecArray | null;
-	let updatedText = xmlText;
-
-	while ((match = DATA_BLOCK_REGEX.exec(xmlText)) !== null) {
-		const attributes = match[1];
-		const dataContent = match[2];
-		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
-		if (!nameMatch) {
-			continue;
-		}
-
-		const decodedName = decodeXmlEntities(nameMatch[1]);
-		if (decodedName !== targetName) {
-			continue;
-		}
-
-		const transformed = transformer(attributes, dataContent);
-		const originalBlock = match[0];
-		const newBlock = `<data${transformed.attributes}>${transformed.dataContent}</data>`;
-		updatedText = updatedText.replace(originalBlock, newBlock);
-		break;
+	const targetBlock = getResxDataBlockMatches(xmlText).find((block) => block.name === targetName);
+	if (!targetBlock) {
+		return xmlText;
 	}
 
-	DATA_BLOCK_REGEX.lastIndex = 0;
+	const transformed = transformer(targetBlock.attributes, targetBlock.dataContent);
+	const newBlock = `<data${transformed.attributes}>${transformed.dataContent}</data>`;
 
-	return updatedText;
+	return xmlText.slice(0, targetBlock.startIndex) + newBlock + xmlText.slice(targetBlock.endIndex);
 }
 
 /**
@@ -336,33 +337,13 @@ export async function addResxEntry(filePath: string, keyName: string, initialVal
 
 export async function deleteResxEntry(filePath: string, keyName: string): Promise<boolean> {
 	const text = await readWorkspaceFileText(filePath);
+	const targetBlock = getResxDataBlockMatches(text, true).find((block) => block.name === keyName);
 
-	let match: RegExpExecArray | null;
-	let updatedText = text;
-	let deleted = false;
-
-	while ((match = DATA_BLOCK_WITH_TRAILING_SPACE_REGEX.exec(text)) !== null) {
-		const attributes = match[1];
-		const nameMatch = attributes.match(/\bname\s*=\s*"([^"]+)"/i);
-		if (!nameMatch) {
-			continue;
-		}
-
-		const decodedName = decodeXmlEntities(nameMatch[1]);
-		if (decodedName !== keyName) {
-			continue;
-		}
-
-		updatedText = updatedText.replace(match[0], '');
-		deleted = true;
-		break;
-	}
-
-	DATA_BLOCK_WITH_TRAILING_SPACE_REGEX.lastIndex = 0;
-
-	if (!deleted) {
+	if (!targetBlock) {
 		return false;
 	}
+
+	let updatedText = text.slice(0, targetBlock.startIndex) + text.slice(targetBlock.endIndex);
 
 	updatedText = updatedText.replace(/\n{3,}/g, '\n\n');
 	await writeWorkspaceFileText(filePath, updatedText);
