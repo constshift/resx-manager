@@ -2,6 +2,10 @@
   "name": "resx-translation-manager",
   "displayName": "RESX Translation Manager",
   "description": "Manage all your .Net translation .resx files in a centralized location and also auto-translate missing fields.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/constshift/resx-manager"
+  },
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.110.0"

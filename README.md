@@ -1,71 +1,107 @@
-# resx-translation-manager README
+# RESX Translation Manager
 
-This is the README for your extension "resx-translation-manager". After writing up a brief description, we recommend including the following sections.
+Manage .resx localization files in one place, quickly detect missing translations, and batch-translate missing values directly from VS Code.
 
-## Features
+## What This Extension Does
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+RESX Translation Manager opens a dedicated webview where you can:
 
-For example if there is an image subfolder under your extension project workspace:
+- Scan a workspace folder for .resx files
+- Group translation files by base name (for example: Resources.resx, Resources.de.resx, Resources.fr.resx)
+- View and edit keys across default and localized files in a single table
+- Add, rename, and delete keys across all language files in a group
+- Highlight missing default values and missing translations
+- Batch translate missing values with Azure Translator or Google Translate
 
-\!\[feature X\]\(images/feature-x.png\)
+## Command
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+Open Command Palette and run:
+
+- RESX Translation Manager - Open Translation Scanner
+
+## Quick Start
+
+1. Open your project folder in VS Code.
+2. Run RESX Translation Manager - Open Translation Scanner.
+3. In Folder, enter a relative path (for example: src/translations) or click the folder picker.
+4. Click Scan.
+5. Select a file group from the left sidebar.
+6. Edit values inline, or use Add Key / delete actions as needed.
+7. Click Batch Translate to fill missing language values.
+
+## File Naming and Grouping
+
+The scanner groups files by base name and folder.
+
+Examples:
+
+- Resources.resx -> default language file
+- Resources.de.resx -> German
+- Resources.de-DE.resx -> German (Germany)
+
+Each group is shown once in the sidebar, and all files in that group are edited together.
+
+## Editing Behavior
+
+- Name column: renames the key in every file of the group
+- Value column: updates the default .resx file
+- Comment column: updates the default .resx file comment
+- Language columns: update each language-specific .resx file
+- Add Key: inserts the key in all files in the group
+- Delete key action: removes the key from all files in the group
+
+Validation and safety checks:
+
+- Duplicate key names are blocked (case-insensitive)
+- Paths are restricted to the current workspace
+- Scan path is saved to workspace settings for next session
+
+## Batch Translation
+
+Use the Batch Translate button to translate missing values only.
+
+Supported providers:
+
+- Azure Translator
+- Google Translate (untested)
+
+Credential sources (priority order):
+
+1. Values entered in the batch-translate modal
+2. Environment variables
+
+Environment variables:
+
+- AZURE_TRANSLATE_KEY
+- AZURE_TRANSLATE_REGION
+- GOOGLE_TRANSLATE_API_KEY
+
+Notes:
+
+- Only keys with a non-empty default value are eligible for translation.
+- Language codes are normalized to their primary language for provider requests (for example, de-DE -> de).
+
+## Extension Setting
+
+This extension contributes:
+
+- resx-translation-manager.scanFolderPath: Default relative folder path used by the translation scanner.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- VS Code 1.110.0 or newer
+- A workspace folder open in VS Code
+- .resx files in your repository
+- Optional: Azure Translator or Google Translate credentials for batch translation
 
-## Extension Settings
+## Known Limitations
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- Translation provider calls are made sequentially.
+- Batch translation updates value fields only (not comments).
+- Lacking support for translation sources
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Initial preview release.
