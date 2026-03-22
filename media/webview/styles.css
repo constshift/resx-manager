@@ -217,10 +217,10 @@ button:hover {
 
 .editor-title {
 	font-weight: 600;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--vscode-input-border);
-	margin-bottom: 8px;
-	min-height: 24px;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .key-controls {
@@ -342,6 +342,54 @@ tr:hover {
 	background-color: rgba(255, 255, 255, 0.05);
 }
 
+.missing-translation {
+	background-color: rgba(229, 127, 112, 0.2);
+}
+
+.missing-translation:hover {
+	background-color: rgba(229, 127, 112, 0.3);
+}
+
+.missing-default-value {
+	background-color: rgba(255, 193, 7, 0.18);
+}
+
+.missing-default-value:hover {
+	background-color: rgba(255, 193, 7, 0.28);
+}
+
+.has-missing-translations {
+	background-color: rgba(229, 127, 112, 0.15);
+	border-left: 3px solid rgba(229, 127, 112, 0.6);
+	padding-left: 5px;
+	position: relative;
+}
+
+.has-missing-translations:hover {
+	background-color: rgba(229, 127, 112, 0.25);
+}
+
+.has-missing-translations:hover::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	right: auto;
+	background-color: var(--vscode-editorHoverWidget-background);
+	color: var(--vscode-editorHoverWidget-foreground);
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	padding: 6px 8px;
+	border-radius: 4px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	z-index: 10;
+	margin-bottom: 4px;
+	font-size: 11px;
+	line-height: 1.4;
+	max-width: 250px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .loading-overlay {
 	display: none;
 	position: fixed;
@@ -350,7 +398,7 @@ tr:hover {
 	width: 100%;
 	height: 100%;
 	background-color: rgba(0, 0, 0, 0.4);
-	z-index: 1000;
+	z-index: 3000;
 }
 
 .loading-overlay.active {

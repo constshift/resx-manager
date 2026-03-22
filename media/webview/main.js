@@ -27,6 +27,29 @@ let currentSourceFiles = {
 	languageFilePaths: {},
 	allFilePaths: []
 };
+let currentLanguages = [];
+let currentKeys = [];
+
+const translationFeature = window.createTranslationFeature({
+	vscode,
+	statusElement: status,
+	showLoadingOverlay,
+	hideLoadingOverlay,
+	getCurrentState: () => ({
+		keys: currentKeys,
+		languages: currentLanguages,
+		selectedGroup: currentSelectedGroup,
+		sourceFiles: currentSourceFiles
+	}),
+	openFileGroup: (group) => {
+		vscode.postMessage({
+			command: 'openFileGroup',
+			baseName: group.baseName,
+			folderPath: group.folderPath
+		});
+	},
+	reloadSelectedGroup
+});
 
 function requestScan(resetView) {
 	status.textContent = resetView ? 'Scanning...' : 'Refreshing...';
@@ -201,8 +224,12 @@ function renderGroups(groups) {
 
 function displayFileContent(baseName, languages, keys) {
 	editorTitle.textContent = baseName;
+	currentLanguages = languages;
+	currentKeys = keys;
+	translationFeature.updateAvailability(languages, keys);
 
 	if (!keys || keys.length === 0) {
+		translationFeature.updateAvailability([], []);
 		tableContainer.innerHTML = '<div class="no-file-selected">No translation keys found</div>';
 		return;
 	}
@@ -285,6 +312,9 @@ function displayFileContent(baseName, languages, keys) {
 		defaultValueCell.contentEditable = 'true';
 		defaultValueCell.dataset.field = 'value';
 		defaultValueCell.dataset.originalValue = row.value || '';
+		if (!row.value) {
+			defaultValueCell.classList.add('missing-default-value');
+		}
 		tr.appendChild(defaultValueCell);
 
 		const commentCell = document.createElement('td');
@@ -294,6 +324,7 @@ function displayFileContent(baseName, languages, keys) {
 		commentCell.dataset.originalValue = row.comment || '';
 		tr.appendChild(commentCell);
 
+		const missingLanguages = [];
 		for (const lang of languages) {
 			const valueCell = document.createElement('td');
 			valueCell.textContent = row[lang] || '';
@@ -301,7 +332,18 @@ function displayFileContent(baseName, languages, keys) {
 			valueCell.dataset.field = 'language';
 			valueCell.dataset.lang = lang;
 			valueCell.dataset.originalValue = row[lang] || '';
+			if (!row[lang]) {
+				valueCell.classList.add('missing-translation');
+				missingLanguages.push(lang);
+			}
 			tr.appendChild(valueCell);
+		}
+
+		if (missingLanguages.length > 0) {
+			nameCell.classList.add('has-missing-translations');
+			const tooltipText = `${row.name}\n\nMissing translations:\n${missingLanguages.join(', ')}`;
+			nameCell.title = tooltipText;
+			nameCell.dataset.tooltip = tooltipText;
 		}
 
 		tbody.appendChild(tr);
@@ -375,6 +417,40 @@ function displayFileContent(baseName, languages, keys) {
 				rowElement.dataset.keyName = newValue;
 			}
 
+			if (field === 'language') {
+				if (!newValue) {
+					editableCell.classList.add('missing-translation');
+				} else {
+					editableCell.classList.remove('missing-translation');
+				}
+
+				if (rowElement) {
+					const nameCell = rowElement.querySelector('.name-column');
+					const missingCells = rowElement.querySelectorAll('td.missing-translation[data-field="language"]');
+					const missingLangs = Array.from(missingCells).map((cell) => cell.dataset.lang);
+
+					if (missingLangs.length > 0) {
+						nameCell.classList.add('has-missing-translations');
+						const keyName = nameCell.textContent || '';
+						const tooltipText = `${keyName}\n\nMissing translations:\n${missingLangs.join(', ')}`;
+						nameCell.title = tooltipText;
+						nameCell.dataset.tooltip = tooltipText;
+					} else {
+						nameCell.classList.remove('has-missing-translations');
+						nameCell.title = nameCell.textContent || '';
+						nameCell.dataset.tooltip = '';
+					}
+				}
+			}
+
+			if (field === 'value') {
+				if (!newValue) {
+					editableCell.classList.add('missing-default-value');
+				} else {
+					editableCell.classList.remove('missing-default-value');
+				}
+			}
+
 			showLoadingOverlay();
 		});
 	}
@@ -433,6 +509,7 @@ window.addEventListener('message', (event) => {
 		};
 
 		displayFileContent(message.baseName, message.languages, message.keys);
+		translationFeature.onFileContentLoaded();
 	} else if (message.command === 'saveCellResult') {
 		hideLoadingOverlay();
 		if (message.error) {
@@ -464,5 +541,7 @@ window.addEventListener('message', (event) => {
 			folderInput.value = message.path;
 			requestScan(true);
 		}
+	} else if (message.command === 'batchTranslateResult') {
+		translationFeature.handleBatchTranslateResult(message);
 	}
 });

@@ -1,0 +1,133 @@
+.scan-input-group {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+#folderPickerButton {
+	padding: 8px 10px;
+	min-width: auto;
+	font-size: 14px;
+}
+
+.sidebar {
+	width: 250px;
+	border-right: 1px solid var(--vscode-input-border);
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+}
+
+.sidebar-search-container {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin: 4px;
+}
+
+.sidebar-search {
+	flex: 1;
+	padding: 4px 6px;
+	border-radius: 3px;
+	border: 1px solid var(--vscode-input-border);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-size: 12px;
+	height: 24px;
+}
+
+.sidebar-search::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+.clear-search-button {
+	padding: 0;
+	width: 24px;
+	height: 24px;
+	border: 1px solid transparent;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.clear-search-button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+#fileList {
+	overflow-y: auto;
+	overflow-x: hidden;
+	flex: 1;
+	padding: 0;
+	width: 100%;
+}
+
+.base-name-item {
+	font-weight: 500;
+}
+
+.group-item {
+	padding: 8px 12px;
+	cursor: pointer;
+	user-select: none;
+	border-left: 3px solid transparent;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	position: relative;
+}
+
+.group-item:hover::after {
+	content: attr(title);
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	right: 0;
+	background-color: var(--vscode-editorHoverWidget-background);
+	color: var(--vscode-editorHoverWidget-foreground);
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	padding: 6px 8px;
+	border-radius: 4px;
+	white-space: normal;
+	word-break: break-word;
+	z-index: 10;
+	margin-bottom: 4px;
+	font-size: 11px;
+	line-height: 1.4;
+	max-width: 300px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.group-item:hover {
+	background-color: rgba(255, 255, 255, 0.08);
+}
+
+.group-item.active {
+	background-color: var(--vscode-inputOption-activeBackground);
+	color: var(--vscode-foreground);
+	border-left-color: var(--vscode-inputOption-activeBorder);
+}
+
+.group-folder-path {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	padding: 0;
+	line-height: 1.2;
+	margin-top: 1px;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.no-results {
+	padding: 12px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}

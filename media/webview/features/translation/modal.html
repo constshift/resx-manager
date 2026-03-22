@@ -1,0 +1,30 @@
+<div id="batchTranslateModal" class="modal" style="display: none;">
+	<div class="modal-overlay"></div>
+	<div class="modal-content batch-translate-modal">
+		<div class="modal-header">
+			<h2>Batch Translate Missing Keys</h2>
+			<button id="closeModalButton" type="button" class="close-modal-btn" title="Close">×</button>
+		</div>
+		<div class="modal-body">
+			<div id="batchTranslateModalError" class="modal-error" style="display: none;"></div>
+			<div class="translation-service-config">
+				<label for="translationServiceSelect">Translation Service:</label>
+				<select id="translationServiceSelect">
+					<option value="azure-translator">Azure Translator</option>
+					<option value="google-translate">Google Translate</option>
+				</select>
+				<div id="translationConfigFields" class="translation-config-fields"></div>
+			</div>
+			<div class="batch-translate-table-wrapper">
+				<table id="batchTranslateTable" class="batch-translate-table">
+					<thead id="batchTranslateTableHead"></thead>
+					<tbody id="batchTranslateTableBody"></tbody>
+				</table>
+			</div>
+		</div>
+		<div class="modal-footer">
+			<button id="cancelTranslateButton" type="button">Cancel</button>
+			<button id="startTranslateButton" type="button" class="primary-btn">Translate Selected</button>
+		</div>
+	</div>
+</div>

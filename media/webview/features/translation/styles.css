@@ -1,0 +1,270 @@
+.editor-title-controls {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	justify-content: space-between;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--vscode-input-border);
+	margin-bottom: 8px;
+}
+
+.batch-translate-btn {
+	padding: 6px 10px;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.modal-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+	position: relative;
+	background-color: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+	max-width: 500px;
+	width: 90%;
+	max-height: 70vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-content.batch-translate-modal {
+	max-width: 800px;
+}
+
+.modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px;
+	border-bottom: 1px solid var(--vscode-input-border);
+}
+
+.modal-header h2 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.close-modal-btn {
+	padding: 0;
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font-size: 18px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.close-modal-btn:hover {
+	background-color: rgba(255, 255, 255, 0.1);
+}
+
+.modal-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.translation-service-config {
+	padding: 12px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 3px;
+	background-color: rgba(0, 0, 0, 0.1);
+}
+
+.translation-service-config label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.translation-service-config select {
+	width: 100%;
+	padding: 6px;
+	margin-bottom: 8px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 3px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-size: 12px;
+}
+
+.translation-config-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.config-field-group {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.config-field-group label {
+	margin: 0;
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.config-field-group input {
+	padding: 4px 6px;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 3px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-size: 11px;
+}
+
+.batch-translate-table-wrapper {
+	flex: 1;
+	overflow: auto;
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 3px;
+	background-color: rgba(0, 0, 0, 0.2);
+}
+
+.batch-translate-table {
+	width: max-content;
+	border-collapse: collapse;
+	font-size: 11px;
+	table-layout: auto;
+}
+
+.batch-translate-table th {
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-foreground);
+	border-bottom: 1px solid var(--vscode-input-border);
+	font-weight: 600;
+	text-align: left;
+	padding: 1px;
+	position: sticky;
+	top: 0;
+	line-height: 1.1;
+	white-space: nowrap;
+	width: 1%;
+}
+
+.batch-translate-table td {
+	padding: 3px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	border-right: 1px solid rgba(255, 255, 255, 0.05);
+	line-height: 1.1;
+	white-space: nowrap;
+	width: 1%;
+}
+
+.batch-translate-table th.batch-lang-header,
+.batch-translate-table td.batch-lang-cell {
+	padding: 0;
+	width: 1%;
+	min-width: 3ch;
+	text-align: center;
+	vertical-align: middle;
+	line-height: 1;
+}
+
+.batch-lang-header-content {
+	padding: 0;
+	margin: 0;
+	line-height: 1;
+}
+
+
+.batch-translate-table tbody tr:hover {
+	background-color: rgba(255, 255, 255, 0.05);
+}
+
+.batch-translate-checkbox {
+	cursor: pointer;
+	margin: 0;
+}
+
+.batch-key-column {
+	width: 64px;
+	min-width: 64px;
+	max-width: 64px;
+}
+
+.batch-key-cell {
+	width: 64px;
+	min-width: 64px;
+	max-width: 64px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.batch-key-text {
+	display: block;
+	max-width: 60px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.modal-footer {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	padding: 12px 16px;
+	border-top: 1px solid var(--vscode-input-border);
+}
+
+.modal-footer button {
+	padding: 6px 12px;
+	font-size: 12px;
+}
+
+.primary-btn {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.primary-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.modal-error {
+	padding: 12px;
+	background-color: #5a1d1d;
+	border: 1px solid #c13535;
+	border-radius: 3px;
+	color: #f48771;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	font-family: monospace;
+	max-height: 200px;
+	overflow-y: auto;
+}

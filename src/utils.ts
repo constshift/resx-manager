@@ -276,7 +276,7 @@ export async function renameResxEntryName(filePath: string, oldKeyName: string, 
 	return true;
 }
 
-export async function addResxEntry(filePath: string, keyName: string): Promise<boolean> {
+export async function addResxEntry(filePath: string, keyName: string, initialValue = ''): Promise<boolean> {
 	const existingEntries = await parseResxFile(filePath);
 	if (existingEntries.has(keyName)) {
 		return false;
@@ -287,9 +287,10 @@ export async function addResxEntry(filePath: string, keyName: string): Promise<b
 	const text = new TextDecoder().decode(content);
 
 	const escapedName = encodeXmlEntities(keyName);
+	const escapedInitialValue = encodeXmlEntities(initialValue);
 	const newEntry = [
 		'  <data name="' + escapedName + '" xml:space="preserve">',
-		'    <value></value>',
+		'    <value>' + escapedInitialValue + '</value>',
 		'    <comment></comment>',
 		'  </data>'
 	].join('\n');

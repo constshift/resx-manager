@@ -38,6 +38,28 @@ export type PickFolderMessage = {
 	command: 'pickFolder';
 };
 
+export type BatchTranslateMessage = {
+	command: 'batchTranslate';
+	translationsPerLanguage: {
+		[language: string]: {
+			keys: string[];
+			defaultValues: string[];
+			filePath?: string;
+		};
+	};
+	translationConfig?: {
+		service: string;
+		azureKey?: string;
+		azureRegion?: string;
+		googleApiKey?: string;
+	};
+};
+
+export type BatchTranslateResultMessage = {
+	command: 'batchTranslateResult';
+	error?: string;
+};
+
 export type FileLanguageGroup = {
 	baseName: string;
 	folderPath: string;
